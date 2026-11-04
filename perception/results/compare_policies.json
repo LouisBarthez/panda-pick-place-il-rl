@@ -1,0 +1,30 @@
+{
+  "episodes": 50,
+  "seeds": "0..49",
+  "expert_exact": {
+    "reussite": "49/50",
+    "echecs_seeds": [
+      42
+    ],
+    "erreur_cube_moyenne_cm": 0.11,
+    "erreur_cube_max_cm": 0.72
+  },
+  "expert_estime": {
+    "reussite": "50/50",
+    "echecs_seeds": [],
+    "erreur_cube_moyenne_cm": 0.11,
+    "erreur_cube_max_cm": 0.54
+  },
+  "sac_exact": {
+    "reussite": "50/50",
+    "echecs_seeds": [],
+    "erreur_cube_moyenne_cm": 0.16,
+    "erreur_cube_max_cm": 1.03
+  },
+  "sac_estime": {
+    "reussite": "50/50",
+    "echecs_seeds": [],
+    "erreur_cube_moyenne_cm": 0.17,
+    "erreur_cube_max_cm": 1.7
+  }
+}

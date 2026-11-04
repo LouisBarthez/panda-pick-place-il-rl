@@ -1,0 +1,32 @@
+{
+  "episodes": 50,
+  "bruit_camera": true,
+  "ombres": false,
+  "reussite_expert_etat_exact": "49/50",
+  "cube_sur_la_table": {
+    "moyenne_cm": 0.1,
+    "p95_cm": 0.23,
+    "max_cm": 0.57,
+    "n_images": 3948
+  },
+  "cube_dans_la_pince": {
+    "moyenne_cm": 0.14,
+    "p95_cm": 0.31,
+    "max_cm": 0.72,
+    "n_images": 1052
+  },
+  "cube_total": {
+    "moyenne_cm": 0.11,
+    "p95_cm": 0.25,
+    "max_cm": 0.72,
+    "n_images": 5000
+  },
+  "cible": {
+    "moyenne_cm": 0.19,
+    "p95_cm": 0.43,
+    "max_cm": 0.61,
+    "n_images": 5000
+  },
+  "cube_detecte_pct": 100.0,
+  "cible_detectee_pct": 94.9
+}
