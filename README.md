@@ -32,6 +32,8 @@ Evaluated on 50 cube and target positions never seen during training.
 | Hardest part | choosing the cameras, designing an imitable expert | writing the reward |
 
 The comparison is not yet apples to apples: the IL policy works from images, the RL policy from the exact state.
+The [Perception](#perception-simulated-rgb-d-camera) section below replaces that exact state with positions estimated
+by a simulated depth camera.
 
 ## The task
 
@@ -76,6 +78,86 @@ Most of the work went into the reward, and each failure is a classic RL lesson:
 The final policy succeeds 49/50 and is faster than the expert. It does not retract the arm after releasing,
 because nothing rewards it yet. The RL agent only does what the reward asks.
 
+## Perception (simulated RGB-D camera)
+
+So far the expert and the RL policy read the cube and target positions straight from the simulator.
+Here they come from a **simulated depth camera** instead, through a classic detection pipeline.
+Everything else the policy sees (tool position and speed, gripper opening) still comes from the robot itself,
+as on the real Panda (joint encoders + kinematics).
+
+![perception](media/perception.gif)
+
+*Left: the simulated camera, with the detection drawn (yellow: cube, cyan: target, dot: estimated center,
+white cross: true position). Right: the scene. The SAC policy (retrained, see below) receives only the estimated
+positions.*
+
+**Pipeline** (`perception/`, OpenCV + NumPy, no learning; detection + 3D take ~2 ms per image on CPU):
+
+1. **Camera** (`realsense.py`): a fixed RGB-D camera beside the table, modelled on an Intel RealSense D435:
+   424 × 240, 42° vertical field of view, depth aligned to color and rounded to 1 mm, depth noise growing with
+   the square of the distance, 1% of pixels without depth, noise on the color image.
+   It looks from the side because the fingers open along x: from there the cube stays visible *between* the
+   fingers while it is carried (from the front, the hand hid it and tracking was lost).
+2. **Detection** (`detector.py`): HSV thresholding (red cube, green target), morphological opening and closing,
+   largest contour.
+3. **3D position**: the pixels of the contour that have a valid depth are back-projected with the camera
+   intrinsics and pose into a point cloud of the *visible surface*. The camera never sees an object's center:
+   - cube (known size, upright): center = half a side below the top face and half a side behind the side face
+     facing the camera;
+   - target mark: middle of its extent (the median is pulled toward the camera, because the near half of a mark
+     seen at an angle covers more pixels), raised by half a cube, since the policies use "where the cube's center
+     should end up".
+4. **Tracking**: an object that is not seen keeps its last estimate; the target, which never moves, is only
+   updated when at least 90% of it is visible (the cube placed on it would otherwise shift it).
+
+**Position error** (50 test episodes, the expert acting on the exact state, 5,000 images):
+
+| | mean | 95th percentile | max | detected |
+|---|---|---|---|---|
+| Cube on the table | 0.10 cm | 0.23 cm | 0.57 cm | 100% of images |
+| Cube in the gripper | 0.14 cm | 0.31 cm | 0.72 cm | 100% of images |
+| Target | 0.19 cm | 0.43 cm | 0.61 cm | 95% of images |
+
+![perception error](media/perception_error.png)
+
+**Success with the estimated state** (the same 50 test episodes; the policies are *not* retrained):
+
+| Policy | exact state | estimated state |
+|---|---|---|
+| Scripted expert | 49/50 | **50/50** |
+| SAC (retrained for this test, see below) | 50/50 | **50/50** |
+
+The SAC model files are not stored in the repository, so for this test SAC was retrained with `rl/train_rl.py`
+(500k steps, same settings, seed 0). This retrained model differs from the one in the Results table above
+(49/50); its own exact-state score is given in the table so that the comparison is like for like.
+With millimetre-level errors, the estimated state changes nothing measurable: SAC succeeds 50/50 in both cases,
+and the expert's one extra success is within the variation from episode to episode (seed 42, the one it misses with
+the exact state, is a borderline case for it).
+
+**How far does it hold?** The expert on the estimated state, in degraded conditions (`perception/robustness.py`;
+SAC was not tested under these conditions):
+
+| Condition | cube error (mean / max) | success |
+|---|---|---|
+| Reference (noisy camera, perfect calibration) | 0.11 / 0.54 cm | 50/50 |
+| Rendering with shadows | 0.11 / 0.62 cm | 48/50 |
+| Camera pose wrong by 5 mm and 1° | 1.19 / 2.22 cm | 48/50 |
+| Camera pose wrong by 10 mm and 2° | 2.34 / 3.61 cm | **0/50** |
+
+The detection itself is not the weak point; **the camera calibration is**. With a 10 mm / 2° error on the camera
+pose, the cube is estimated about 2 cm away from where it really is (18 mm sideways and 12 mm too low in the
+episode I inspected). The gripper, which knows its own position exactly, goes down beside the cube and closes on
+nothing, every time. On the real robot this means a careful hand-eye calibration, or a final approach guided by
+the wrist camera.
+
+**Limits.** This is simulation only, and the setting is easy for a camera: two saturated colors on a plain floor,
+constant lighting, no motion blur, no reflections, image and depth perfectly synchronized, exact intrinsics, a
+single cube of known size that stays upright. Shadows are off by default (much faster with software rendering) and
+tested separately above. A real RealSense adds edge artifacts and holes on dark or shiny surfaces, and the hand-eye
+calibration is never perfect, so the millimetre errors above are a lower bound, not a prediction for the real setup.
+The GIF shows the noise-free image of the same camera for readability; the detection drawn on it ran on the noisy
+image, as in all the numbers above.
+
 ## Repository layout
 
 ```
@@ -83,6 +165,14 @@ common/   panda_pick_env.py   Gymnasium env: robot, cube, target, 2 cameras, IK,
           test_expert.py      scripted, memoryless expert + its test
 il/       record_demos*.py, train_bc*.py, diagnose_bc_vision.py, dagger.py
 rl/       train_rl.py, eval_rl.py
+perception/
+          realsense.py        simulated RGB-D camera (RealSense D435-like)
+          detector.py         HSV detection, 3D position of cube and target, tracking
+          eval_perception.py  position error on 50 episodes + figure
+          compare_policies.py success with the exact vs the estimated state (expert, SAC)
+          robustness.py       shadows and camera calibration errors
+          make_gif.py         perception GIF / MP4
+          results/            JSON and CSV of the numbers above
 videos/   make_videos.py      renders the videos above
 media/    GIFs, MP4s and figures used in this README
 ```
@@ -101,14 +191,20 @@ python il/train_bc_vision.py --eval --view
 python rl/train_rl.py 500000              # SAC, a few hours on CPU
 python rl/eval_rl.py --view
 python videos/make_videos.py              # expert / IL / RL videos
+
+python perception/eval_perception.py      # position error on 50 episodes (~10 min on CPU)
+python perception/compare_policies.py     # exact vs estimated state (expert, + SAC if rl/sac_best.zip exists)
+python perception/robustness.py           # shadows, calibration errors (~1 h on CPU)
+python perception/make_gif.py             # perception GIF
 ```
 
 Every script writes its outputs (demos, models, logs) next to itself.
 
 ## Next steps
 
-- Realistic perception: simulated RealSense-like cameras with depth, and object detection, so that the cube and target
-  positions come from the cameras rather than from the simulator.
+- Perception on the real setup: hand-eye calibration of a real RealSense, then the same pipeline on real images
+  (the simulated version is in [Perception](#perception-simulated-rgb-d-camera)). Also: RL directly from the camera
+  estimates during training, rather than only at test time.
 - Human demonstrations through teleoperation (haptic interface) instead of a scripted expert.
 - Hybrid control: trajectory generation for the transport, RL for grasping and placing.
 - Obstacle avoidance, then the same task in Isaac Sim, then on the real Franka Panda.
