@@ -45,7 +45,10 @@ WS_LOW = np.array([0.30, -0.30, 0.0])
 WS_HIGH = np.array([0.75, 0.30, 0.40])
 
 
-def build_model():
+def build_model(add_to_spec=None):
+    """add_to_spec : fonction optionnelle f(spec) appelee avant la compilation, pour ajouter
+    des elements qui ne changent pas la physique (ex. la camera RGB-D de perception/).
+    Sans elle, le modele est exactement celui utilise pour tous les resultats IL et RL."""
     spec = mujoco.MjSpec.from_file(os.path.join(PANDA_DIR, "scene.xml"))
     # la keyframe "home" ne connait pas le cube : on la supprime et on regle qpos a la main
     for key in list(spec.keys):
@@ -72,14 +75,16 @@ def build_model():
     # camera fixe, devant le robot, qui regarde la zone de travail
     spec.worldbody.add_camera(name="front", pos=[0.95, 0, 0.65],
                               xyaxes=[0, 1, 0, -0.845, 0, 0.536], fovy=40)
+    if add_to_spec is not None:
+        add_to_spec(spec)
     return spec.compile()
 
 
 class PandaPickEnv(gym.Env):
     metadata = {"render_modes": ["human"], "render_fps": 25}
 
-    def __init__(self, render_mode=None):
-        self.model = build_model()
+    def __init__(self, render_mode=None, add_to_spec=None):
+        self.model = build_model(add_to_spec)
         self.data = mujoco.MjData(self.model)
         self.ik_data = mujoco.MjData(self.model)   # brouillon pour l'IK
         self.render_mode = render_mode
