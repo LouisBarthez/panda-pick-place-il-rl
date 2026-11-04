@@ -1,0 +1,14 @@
+# environnement et modele du robot (a installer localement)
+venv/
+mujoco_menagerie/
+__pycache__/
+
+# donnees et modeles produits par les scripts
+*.npz
+*.pt
+*.pkl
+rl/*.zip
+rl/rl_log.csv
+rl/rl_courbe.png
+il/diag/
+videos/*.mp4
